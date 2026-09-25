@@ -30,7 +30,7 @@ function nextMonthLabel(id) {
 }
 
 // Versione dell'app: va aumentata a ogni pubblicazione (insieme a VERSION in sw.js)
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 // Nessun server: le "chiamate" vanno all'archivio locale del telefono (backend.js)
 function api(method, url, body) {
@@ -58,12 +58,31 @@ function applyTheme(theme) {
   const root = document.documentElement;
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;
-  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
-    if (theme === 'auto') m.content = m.media.includes('dark') ? '#050507' : '#eef1f5'; // uguali allo sfondo dell'app
-    else m.content = bg;
-  });
+  updateStatusBar();
 }
+
+// Barra di stato (Android) dello stesso colore della sfumatura in alto: metà sfumatura, metà sfondo
+function updateStatusBar() {
+  const css = getComputedStyle(document.documentElement);
+  const rgb = (name) => {
+    const h = css.getPropertyValue(name).trim().replace('#', '');
+    return h.length === 6 ? [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) : null;
+  };
+  const wall = rgb('--wall-1');
+  const bg = rgb('--bg');
+  if (!wall || !bg) return;
+  const color = `#${wall.map((w, i) => Math.round(w * 0.5 + bg[i] * 0.5).toString(16).padStart(2, '0')).join('')}`;
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.appendChild(meta);
+  }
+  meta.content = color;
+}
+
+// In automatico segue il chiaro/scuro del telefono anche mentre l'app è aperta
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', updateStatusBar);
 
 function setTheme(theme) {
   try {
@@ -232,6 +251,7 @@ function applyPrefs() {
   const root = document.documentElement;
   root.dataset.accent = getPref('accent', 'verde');
   root.dataset.icons = getPref('icons', 'on');
+  updateStatusBar();
 }
 applyPrefs();
 
