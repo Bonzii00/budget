@@ -30,7 +30,7 @@ function nextMonthLabel(id) {
 }
 
 // Versione dell'app: va aumentata a ogni pubblicazione (insieme a VERSION in sw.js)
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 // Nessun server: le "chiamate" vanno all'archivio locale del telefono (backend.js)
 function api(method, url, body) {

@@ -125,7 +125,8 @@ input, select { font: inherit; color: inherit; }
 
 /* ---------- card voci ---------- */
 
-.cards { display: grid; gap: 10px; }
+.cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.cards > .card { min-width: 0; }
 
 .card {
   position: relative;
