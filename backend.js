@@ -7,7 +7,7 @@
 // ============================================================
 
 const Backend = (() => {
-  const SCHEMA = 1;
+  const SCHEMA = 2;
   const DATA_KEY = 'data';
 
   const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
@@ -19,14 +19,6 @@ const Backend = (() => {
     ['Ristoranti e uscite', 'pct', 6],
     ['Svago', 'pct', 4],
     ['Varie', 'pct', 3],
-  ];
-
-  const MILESTONES = [
-    [0.5, 'Primo salvagente'],
-    [1, 'Un mese al sicuro'],
-    [1.5, 'Un mese e mezzo'],
-    [2, 'Due mesi tranquillo'],
-    [2.5, 'Fondo completo'],
   ];
 
   let data = null;
@@ -111,13 +103,16 @@ const Backend = (() => {
       })),
       months: {},
       expenses: [],
+      plans: [],
+      withdrawals: [],
       nextId: 100,
     };
   }
 
-  // Aggiornamenti futuri del formato dati: ogni passo porta da schema N a N+1
+  // Aggiornamenti del formato dati: ogni passo porta da schema N a N+1
   const MIGRATIONS = {
-    // 1: (d) => { ...; d.schema = 2; return d; },
+    // 1 -> 2: piani di risparmio oltre al fondo emergenza
+    1: (d) => ({ ...d, plans: d.plans || [], withdrawals: d.withdrawals || [], schema: 2 }),
   };
 
   function migrate(d) {
@@ -340,6 +335,13 @@ const Backend = (() => {
     snapshot.expenses = monthExpenses(id).reverse();
     snapshot.closedAt = new Date().toISOString();
     snapshot.closedOn = todayLocal();
+    // Divisione dell'avanzo tra fondo emergenza e piani, fissata alla chiusura
+    const s = data.settings;
+    if (s.goalMonths && s.goalStart && id >= s.goalStart) {
+      const ctx = savingsCtx(snapshot.fixedTotal);
+      snapshot.savings = Savings.allocate(ctx, id, snapshot.avanzo);
+      snapshot.savings.names = Object.fromEntries(ctx.plans.map((p) => [p.id, p.name]));
+    }
     data.months[id].closedAt = snapshot.closedAt;
     data.months[id].snapshot = snapshot;
     return snapshot;
@@ -355,62 +357,42 @@ const Backend = (() => {
 
   // ---------- fondo emergenza ----------
 
-  function computeGoal(current) {
-    const s = data.settings;
-    if (!s.goalMonths || !s.goalStart) return null;
-    const target = Math.round(current.fixedTotal * s.goalMultiplier);
+  // Contesto per savings.js. overrides: valori non ancora salvati (configurazione iniziale, modifica del piano)
+  function savingsCtx(fTotal, overrides = {}) {
+    const settings = { ...data.settings, ...overrides };
+    const start = settings.goalStart || '9999-99';
     const closed = Object.entries(data.months)
-      .filter(([id, m]) => m.closedAt && id >= s.goalStart)
+      .filter(([id, m]) => m.closedAt && id >= start)
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([, m]) => m.snapshot);
-    const savedClosed = closed.reduce((acc, m) => acc + m.avanzo, 0);
-    const saved = s.goalInitial + savedClosed;
-    const thisMonth = current.avanzoPrevisto;
-    const withThis = saved + thisMonth;
-    const planMonthly = Math.ceil(Math.max(0, target - s.goalInitial) / s.goalMonths);
-    const pace = closed.length ? Math.round(savedClosed / closed.length) : planMonthly;
-
-    const etaFor = (amount) => {
-      if (saved >= amount) return { reached: true, month: null };
-      if (withThis >= amount) return { reached: false, month: current.id };
-      if (pace <= 0) return { reached: false, month: null };
-      return { reached: false, month: addMonths(current.id, Math.ceil((amount - withThis) / pace)) };
-    };
-
-    const planEnd = addMonths(s.goalStart, s.goalMonths - 1);
-    const eta = etaFor(target);
-    const milestones = MILESTONES
-      .filter(([mult]) => mult <= s.goalMultiplier)
-      .map(([mult, name]) => {
-        const amount = Math.round(current.fixedTotal * mult);
-        const e = etaFor(amount);
-        return { mult, name, amount, reached: e.reached, eta: e.month, etaLabel: e.month ? monthLabel(e.month) : null };
-      });
-
     return {
-      target,
-      multiplier: s.goalMultiplier,
-      months: s.goalMonths,
-      initial: s.goalInitial,
-      start: s.goalStart,
-      planEnd,
-      planEndLabel: monthLabel(planEnd),
-      planMonthly,
-      saved,
-      thisMonth,
-      withThis,
-      pace,
-      closedCount: closed.length,
-      reached: eta.reached,
-      eta: eta.month,
-      etaLabel: eta.month ? monthLabel(eta.month) : null,
-      monthsAhead: eta.month ? monthDiff(eta.month, planEnd) : null,
-      milestones,
+      settings,
+      target: Math.round(fTotal * settings.goalMultiplier),
+      plans: [...data.plans].sort(bySort),
+      closed,
+      withdrawals: data.withdrawals,
+      monthLabel,
     };
   }
 
-  function monthlySavingFor(fTotal, initial, months) {
-    return Math.ceil(Math.max(0, Math.round(fTotal * data.settings.goalMultiplier) - initial) / months);
+  // Stato del fondo emergenza (goal) e dei piani per la schermata
+  function computeSavings(current) {
+    const s = data.settings;
+    if (!s.goalMonths || !s.goalStart) return { goal: null, plans: [] };
+    const out = Savings.summary(savingsCtx(current.fixedTotal), current);
+    const recent = [...data.withdrawals].sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1));
+    for (const p of out.plans) {
+      p.withdrawals = recent.filter((w) => w.planId === p.id).slice(0, 20)
+        .map(({ id, planId, amount, note, date }) => ({ id, planId, amount, note, date }));
+    }
+    return out;
+  }
+
+  // Quanto mettere da parte in questo mese (fondo + piani attivi), per calcolare i budget delle voci
+  function plannedSavingFor(fTotal, overrides = {}) {
+    const s = { ...data.settings, ...overrides };
+    if (!s.goalMonths) return 0;
+    return Savings.plannedSaving(savingsCtx(fTotal, overrides), currentMonthId());
   }
 
   function scaleCategories(baseCents, fTotal, monthlySaving) {
@@ -425,20 +407,18 @@ const Backend = (() => {
     for (const c of pctCats) c.value = Math.max(0.01, Math.floor(c.value * factor * 100) / 100);
   }
 
-  // Dopo un cambio alle spese fisse: riscala le voci in percentuale come nella configurazione iniziale
-  // (tenendo conto del risparmio mensile del fondo). Se non resta spazio la spesa fissa si salva
-  // lo stesso, le voci restano com'erano e l'app lo segnala.
-  function rescaleAfterFixedChange() {
+  // Dopo un cambio a spese fisse o piani: riscala le voci in percentuale come nella configurazione iniziale.
+  // Se non resta spazio il cambio si salva lo stesso, le voci restano com'erano e l'app lo segnala.
+  function rescaleCategories() {
     const s = data.settings;
     if (!s.baseCents) return undefined;
     const fTotal = fixedTotal();
-    const monthly = s.goalMonths ? monthlySavingFor(fTotal, s.goalInitial, s.goalMonths) : 0;
     try {
-      scaleCategories(s.baseCents, fTotal, monthly);
+      scaleCategories(s.baseCents, fTotal, plannedSavingFor(fTotal));
       return undefined;
     } catch (err) {
       if (!(err instanceof HttpError)) throw err;
-      return { warning: 'Spese fisse salvate, ma non resta abbastanza per le voci variabili: riduci qualche voce o allunga il piano del fondo' };
+      return { warning: 'Salvato, ma non resta abbastanza per le voci variabili: riduci qualche voce, una quota di risparmio o allunga il piano del fondo' };
     }
   }
 
@@ -497,10 +477,12 @@ const Backend = (() => {
   on('GET', 'state', () => {
     const { month, closed } = openMonth();
     const computed = computeMonth(month);
+    const savings = computeSavings(computed);
     return {
       today: todayLocal(),
       month: computed,
-      goal: computeGoal(computed),
+      goal: savings.goal,
+      plans: savings.plans,
       expenses: monthExpenses(month),
       settings: { ...data.settings, instanceId: data.instanceId },
       categories: activeCategories(),
@@ -575,7 +557,7 @@ const Backend = (() => {
 
   on('POST', 'fixed', (b) => {
     data.fixed.push({ id: nextId(), name: parseName(b.name), amount: parseCents(b.amount), sort: nextSort(data.fixed) });
-    return rescaleAfterFixedChange();
+    return rescaleCategories();
   });
 
   on('PUT', 'fixed/(\\d+)', (b, [id]) => {
@@ -584,13 +566,13 @@ const Backend = (() => {
     const amount = parseCents(b.amount);
     const changed = amount !== f.amount;
     Object.assign(f, { name, amount });
-    return changed ? rescaleAfterFixedChange() : undefined;
+    return changed ? rescaleCategories() : undefined;
   });
 
   on('DELETE', 'fixed/(\\d+)', (b, [id]) => {
     const f = findFixed(parseId(id));
     data.fixed = data.fixed.filter((x) => x !== f);
-    return rescaleAfterFixedChange();
+    return rescaleCategories();
   });
 
   on('POST', 'fixed/(\\d+)/to-variable', (b, [id]) => {
@@ -609,6 +591,73 @@ const Backend = (() => {
       });
     });
   }
+
+  // ---------- piani di risparmio ----------
+
+  function parsePlanBody(b) {
+    return {
+      name: parseName(b.name),
+      monthly: parseCents(b.monthly, { field: 'Quota al mese' }),
+      target: b.target == null || String(b.target).trim() === '' ? null : parseCents(b.target, { field: 'Obiettivo' }),
+      after: b.after === true,
+    };
+  }
+
+  function findPlan(id) {
+    const p = data.plans.find((x) => x.id === id && !x.endMonth);
+    if (!p) throw new HttpError(404, 'Piano non trovato');
+    return p;
+  }
+
+  on('POST', 'plans', (b) => {
+    const { month } = openMonth();
+    if (!data.settings.goalStart) throw new HttpError(400, 'Configura prima il fondo emergenza');
+    data.plans.push({ id: nextId(), ...parsePlanBody(b), startMonth: month, endMonth: null, sort: nextSort(data.plans) });
+    return rescaleCategories();
+  });
+
+  on('PUT', 'plans/(\\d+)', (b, [id]) => {
+    const p = findPlan(parseId(id));
+    const next = parsePlanBody(b);
+    const changed = next.monthly !== p.monthly || next.target !== p.target || next.after !== p.after;
+    Object.assign(p, next);
+    return changed ? rescaleCategories() : undefined;
+  });
+
+  // Se il piano ha già ricevuto soldi resta nei mesi passati e smette di riceverne da questo mese
+  on('DELETE', 'plans/(\\d+)', (b, [id]) => {
+    const { month } = openMonth();
+    const p = findPlan(parseId(id));
+    const used = p.startMonth < month || data.withdrawals.some((w) => w.planId === p.id);
+    if (used) p.endMonth = month;
+    else data.plans = data.plans.filter((x) => x !== p);
+    return rescaleCategories();
+  });
+
+  // Prelievo: soldi del piano usati (es. il viaggio)
+  on('POST', 'plans/(\\d+)/withdraw', (b, [id]) => {
+    const { month } = openMonth();
+    const p = findPlan(parseId(id));
+    const amount = parseCents(b.amount);
+    const available = Math.max(0, computeSavings(computeMonth(month)).plans.find((x) => x.id === p.id)?.saved ?? 0);
+    if (amount > available) throw new HttpError(400, `Nel piano ci sono ${(available / 100).toFixed(2).replace('.', ',')} €`);
+    data.withdrawals.push({
+      id: nextId(),
+      planId: p.id,
+      amount,
+      note: String(b.note ?? '').trim().slice(0, 120),
+      date: parseExpenseDate(b.date, month),
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  on('DELETE', 'withdrawals/(\\d+)', (b, [id]) => {
+    const { month } = openMonth();
+    const w = data.withdrawals.find((x) => x.id === parseId(id));
+    if (!w) throw new HttpError(404, 'Prelievo non trovato');
+    if (w.date.slice(0, 7) !== month) throw new HttpError(409, 'Il mese di questo prelievo è già chiuso');
+    data.withdrawals = data.withdrawals.filter((x) => x !== w);
+  });
 
   on('PUT', 'settings', (b) => {
     const baseCents = parseCents(b.base, { field: 'Base di riferimento' });
@@ -639,7 +688,7 @@ const Backend = (() => {
     }));
     if (fixed.length === 0) throw new HttpError(400, 'Inserisci almeno una spesa fissa');
     const fTotal = fixed.reduce((acc, f) => acc + f.amount, 0);
-    const monthly = monthlySavingFor(fTotal, initial, months);
+    const monthly = plannedSavingFor(fTotal, { goalMonths: months, goalInitial: initial, goalStart: month });
     // se qualcosa fallisce, request() riporta i dati com'erano
     data.settings.baseCents = base;
     data.fixed = fixed.map((f, i) => ({ id: nextId(), ...f, sort: i }));
@@ -651,7 +700,10 @@ const Backend = (() => {
     const { month } = openMonth();
     const months = parseGoalMonths(b.months);
     const initial = parseCents(b.initial ?? 0, { allowZero: true, field: 'Già da parte' });
-    if (b.recalc) scaleCategories(data.settings.baseCents, fixedTotal(), monthlySavingFor(fixedTotal(), initial, months));
+    if (b.recalc) {
+      const saving = plannedSavingFor(fixedTotal(), { goalMonths: months, goalInitial: initial, goalStart: data.settings.goalStart || month });
+      scaleCategories(data.settings.baseCents, fixedTotal(), saving);
+    }
     if (!data.settings.goalStart) data.settings.goalStart = month;
     Object.assign(data.settings, { goalMonths: months, goalInitial: initial });
   });

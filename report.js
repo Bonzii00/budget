@@ -28,6 +28,16 @@ const Report = (() => {
     return `${pct(c.value)} di ${euro(baseCents)}`;
   }
 
+  // Divisione dell'avanzo salvata alla chiusura: [[nome, importo]]
+  function savingsRows(snap) {
+    if (!snap.savings) return [];
+    const names = snap.savings.names || {};
+    return [
+      ['Fondo emergenza', snap.savings.emergency],
+      ...Object.entries(snap.savings.plans || {}).map(([id, amt]) => [names[id] || 'Piano', amt]),
+    ];
+  }
+
   function salaryNote(snap) {
     if (snap.salarySource === 'reale') return null;
     if (snap.salarySource === 'media') {
@@ -71,6 +81,7 @@ const Report = (() => {
     }
     add();
     add('AVANZO DEL MESE', num(snap.avanzo));
+    savingsRows(snap).forEach(([name, amt]) => add(`  a ${name}`, num(amt)));
     add();
     add('DETTAGLIO SPESE', 'Voce', 'Importo', 'Nota');
     snap.expenses.forEach((e) => add(date(e.date), e.category, num(e.amount), e.note));
@@ -256,7 +267,13 @@ const Report = (() => {
 
     section('AVANZO DEL MESE');
     kv('Avanzo', euro(snap.avanzo), { bold: true, size: 14, color: snap.avanzo < 0 ? C.red : C.text });
-    row([{ text: 'Stipendio - spese fisse - spese variabili effettive. Va nel fondo emergenza o dove decidi tu.', x: L, w: R - L, color: C.muted }], { size: 8 });
+    row([{
+      text: snap.savings
+        ? 'Stipendio - spese fisse - spese variabili effettive, diviso così:'
+        : 'Stipendio - spese fisse - spese variabili effettive.',
+      x: L, w: R - L, color: C.muted,
+    }], { size: 8 });
+    savingsRows(snap).forEach(([name, amt]) => kv(`  ${name}`, euro(amt)));
 
     section(`DETTAGLIO SPESE (${snap.expenses.length})`);
     if (snap.expenses.length === 0) row([{ text: 'Nessuna spesa registrata.', x: L, w: R - L, color: C.muted }]);

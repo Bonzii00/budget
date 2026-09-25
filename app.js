@@ -30,7 +30,7 @@ function nextMonthLabel(id) {
 }
 
 // Versione dell'app: va aumentata a ogni pubblicazione (insieme a VERSION in sw.js)
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.0';
 
 // Nessun server: le "chiamate" vanno all'archivio locale del telefono (backend.js)
 function api(method, url, body) {
@@ -180,6 +180,7 @@ function renderMese() {
     </header>
 
     ${goalCardHtml()}
+    ${plansHtml()}
 
     <section class="summary">
       <button class="summary-row" data-act="salary">
@@ -524,7 +525,11 @@ function showWelcome() {
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 function goalStatus(g) {
-  if (g.reached) return { mood: 'done', text: 'Ce l\'hai fatta: il fondo emergenza è completo! Da ora quello che avanza è tutto tuo.' };
+  if (state.month.id < g.start) return { mood: 'ok', text: `Il piano parte a <b>${monthName(g.start)}</b>: da lì quello che avanza va nel fondo.` };
+  if (g.reached) {
+    const next = (state.plans || []).filter((p) => p.after && p.status !== 'completo').map((p) => esc(p.name));
+    return { mood: 'done', text: `Ce l'hai fatta: il fondo emergenza è completo! ${next.length ? `Da ora la sua quota va a <b>${next.join(', ')}</b>.` : 'Da ora quello che avanza è tutto tuo.'}` };
+  }
   if (!g.etaLabel) return { mood: 'behind', text: 'Questo mese non stai mettendo via niente: resta nei budget e si riparte.' };
   const over = state.month.overList.length > 0;
   let text;
@@ -616,6 +621,130 @@ function goalSheet() {
   });
 }
 
+// ============ piani di risparmio (oltre al fondo emergenza) ============
+
+const monthName = (id) => `${MESI[Number(id.slice(5, 7)) - 1]} ${id.slice(0, 4)}`;
+
+function planStatusText(p) {
+  if (p.status === 'completo') return 'Obiettivo raggiunto';
+  if (p.status === 'in-attesa') return `${fmt(p.monthly)} al mese quando il fondo emergenza è completo`;
+  if (p.status === 'da-iniziare') return `${fmt(p.monthly)} al mese da ${monthName(p.startMonth)}`;
+  return `${fmt(p.monthly)} al mese · questo mese +${fmt(p.thisMonth)}${salaryIsEstimate() ? ' (stimato)' : ''}`;
+}
+
+function plansHtml() {
+  const plans = state.plans || [];
+  if (!state.goal || plans.length === 0) return '';
+  return `
+    <div class="section-title"><span>Altri risparmi</span></div>
+    <div class="list">
+      ${plans.map((p) => `
+        <button class="list-row" data-act="plan" data-id="${p.id}">
+          <div class="grow">
+            <div class="title">${esc(p.name)}</div>
+            <div class="sub">${planStatusText(p)}</div>
+            ${p.target ? `<div class="bar" style="margin-top:8px"><span style="width:${Math.max(0, Math.min(100, (p.saved / p.target) * 100)).toFixed(1)}%"></span></div>` : ''}
+          </div>
+          <div style="text-align:right">
+            <div class="amount num">${fmt(p.saved)}</div>
+            ${p.target ? `<div class="sub num">di ${fmt(p.target)}</div>` : ''}
+          </div>
+        </button>`).join('')}
+    </div>`;
+}
+
+function planSheet(p = null) {
+  let after = p ? p.after : false;
+  const month = state.month.id;
+  openSheet(`
+    <h2>${p ? esc(p.name) : 'Nuovo piano di risparmio'}</h2>
+    <p class="sheet-sub">${p
+      ? `Da parte: <b>${fmt(p.saved)}</b>${p.target ? ` di ${fmt(p.target)}` : ''}`
+      : 'Per viaggi, auto, investimenti… Il fondo emergenza ha sempre la precedenza.'}</p>
+    ${p && p.saved > 0 ? '<button class="btn secondary" type="button" data-withdraw style="margin-bottom:16px">Usa i soldi</button>' : ''}
+    <form>
+      <label class="field"><span>Nome</span>
+        <input class="input" name="name" maxlength="60" placeholder="es. Viaggi" autocomplete="off" value="${esc(p?.name ?? '')}"></label>
+      <label class="field"><span>Quanto mettere da parte al mese (€)</span>
+        <input class="input num" name="monthly" inputmode="decimal" placeholder="es. 80,00" autocomplete="off" value="${p ? fmtIn(p.monthly) : ''}"></label>
+      <label class="field"><span>Obiettivo (€, facoltativo)</span>
+        <input class="input num" name="target" inputmode="decimal" placeholder="es. 960,00" autocomplete="off" value="${p?.target ? fmtIn(p.target) : ''}"></label>
+      <div class="field"><span>Quando parte</span>
+        <div class="seg" data-seg="after">
+          <button type="button" data-v="0">Subito</button>
+          <button type="button" data-v="1">Dopo il fondo</button>
+        </div></div>
+      <p class="hint" data-after-hint style="margin:-4px 2px 14px"></p>
+      <button class="btn" type="submit">${p ? 'Salva' : 'Crea piano'}</button>
+      ${p ? '<button class="btn danger" type="button" data-del>Elimina piano</button>' : ''}
+    </form>
+    ${p && p.withdrawals.length ? `
+      <div class="section-title"><span>Soldi usati</span></div>
+      <div class="list">
+        ${p.withdrawals.map((w) => `
+          <button class="list-row" type="button" data-w="${w.id}" data-open="${w.date.slice(0, 7) === month ? 1 : 0}">
+            <div class="grow">
+              <div class="title">${w.note ? esc(w.note) : '<span class="muted">Senza nota</span>'}</div>
+              <div class="sub">${fmtDay(w.date)} ${w.date.slice(0, 4)}</div>
+            </div>
+            <span class="amount num">−${fmt(w.amount)}</span>
+          </button>`).join('')}
+      </div>` : ''}
+  `, (root) => {
+    const update = () => {
+      root.querySelectorAll('[data-seg="after"] button').forEach((b) => b.classList.toggle('on', (b.dataset.v === '1') === after));
+      $('[data-after-hint]', root).textContent = after
+        ? 'Finché il fondo emergenza non è completo, questa quota va al fondo. Poi passa a questo piano.'
+        : 'Riceve la sua quota ogni mese, subito dopo quella del fondo emergenza.';
+    };
+    root.querySelectorAll('[data-seg="after"] button').forEach((b) => b.addEventListener('click', () => {
+      after = b.dataset.v === '1';
+      update();
+    }));
+    update();
+    if (!p) $('input[name="name"]', root).focus();
+    bindForm(root, async (fd) => {
+      const body = { name: fd.get('name'), monthly: fd.get('monthly'), target: fd.get('target'), after };
+      const r = p ? await api('PUT', `api/plans/${p.id}`, body) : await api('POST', 'api/plans', body);
+      if (r.warning) return r;
+      return p ? 'Piano aggiornato' : 'Piano creato, voci variabili ricalcolate';
+    });
+    $('[data-withdraw]', root)?.addEventListener('click', () => withdrawSheet(p));
+    $('[data-del]', root)?.addEventListener('click', () => confirmAndRun(
+      `Eliminare il piano "${p.name}"? Da questo mese non riceve più soldi.`,
+      () => api('DELETE', `api/plans/${p.id}`),
+      'Piano eliminato, voci variabili ricalcolate',
+    ));
+    root.querySelectorAll('[data-w]').forEach((b) => b.addEventListener('click', () => {
+      if (b.dataset.open !== '1') { toast('Questo prelievo è di un mese già chiuso', true); return; }
+      confirmAndRun('Annullare questo prelievo? I soldi tornano nel piano.', () => api('DELETE', `api/withdrawals/${b.dataset.w}`), 'Prelievo annullato');
+    }));
+  });
+}
+
+// Soldi presi da un piano (es. il viaggio)
+function withdrawSheet(p) {
+  const m = state.month;
+  openSheet(`
+    <h2>Usa i soldi</h2>
+    <p class="sheet-sub">${esc(p.name)}: disponibili ${fmt(p.saved)}</p>
+    <form>
+      <label class="field"><input class="input amount num" name="amount" inputmode="decimal" required placeholder="0,00" autocomplete="off"></label>
+      <label class="field"><span>Nota (facoltativa)</span>
+        <input class="input" name="note" maxlength="120" placeholder="es. Volo per Amsterdam" autocomplete="off"></label>
+      <label class="field"><span>Data</span>
+        <input class="input" type="date" name="date" min="${m.id}-01" max="${m.id}-${String(m.days).padStart(2, '0')}" value="${state.today}"></label>
+      <button class="btn" type="submit">Registra</button>
+    </form>
+  `, (root) => {
+    $('input', root).focus();
+    bindForm(root, async (fd) => {
+      await api('POST', `api/plans/${p.id}/withdraw`, { amount: fd.get('amount'), note: fd.get('note'), date: fd.get('date') });
+      return 'Prelievo registrato';
+    });
+  });
+}
+
 function cardHtml(c, i = 0) {
   const ratio = c.budget > 0 ? c.spent / c.budget : (c.spent > 0 ? 2 : 0);
   const barCls = c.over ? 'over' : ratio >= 0.85 ? 'warn' : '';
@@ -689,6 +818,8 @@ async function historySheet(id) {
       <div class="list-row"><div class="grow">Spese fisse</div><div class="amount num">−${fmt(s.fixedTotal)}</div></div>
       <div class="list-row"><div class="grow">Spese variabili</div><div class="amount num">−${fmt(s.varSpent)}</div></div>
       <div class="list-row total"><div class="grow">Avanzo</div><div class="amount num ${s.avanzo < 0 ? 'red' : ''}">${fmt(s.avanzo)}</div></div>
+      ${s.savings ? [['Fondo emergenza', s.savings.emergency], ...Object.entries(s.savings.plans || {}).map(([id, a]) => [s.savings.names?.[id] ?? 'Piano', a])]
+    .map(([n, a]) => `<div class="list-row"><div class="grow sub">→ ${esc(n)}</div><div class="amount num">${fmt(a)}</div></div>`).join('') : ''}
     </div>
 
     <table class="report-table num">
@@ -724,7 +855,9 @@ function renderImpostazioni() {
   const varOnBase = categories.reduce((a, c) => a + (c.kind === 'eur' ? c.value : Math.round((c.value / 100) * base)), 0);
   const pctFixed = (fixedTotal / base) * 100;
   const pctVar = (varOnBase / base) * 100;
-  const pctTot = pctFixed + pctVar;
+  const saving = state.goal?.plannedSaving ?? 0;
+  const pctSave = (saving / base) * 100;
+  const pctTot = pctFixed + pctVar + pctSave;
   const bad = pctTot > 100;
 
   view.innerHTML = `
@@ -738,16 +871,25 @@ function renderImpostazioni() {
         <input class="input" id="pref-name" maxlength="30" placeholder="Il tuo nome" value="${esc(getPref('userName', ''))}"></label>
     </div>
 
-    <div class="section-title"><span>Fondo emergenza</span></div>
+    <div class="section-title"><span>Risparmio</span></div>
     <div class="list">
       ${state.goal ? `
         <button class="list-row" data-act="goal">
           <div class="grow">
-            <div class="title">Obiettivo ${fmt(state.goal.target)}</div>
-            <div class="sub">${state.goal.months} mesi · ${fmt(state.goal.planMonthly)} al mese</div>
+            <div class="title">Fondo emergenza</div>
+            <div class="sub">Obiettivo ${fmt(state.goal.target)} · ${state.goal.months} mesi · ${fmt(state.goal.planMonthly)} al mese</div>
           </div>
           <span class="chev">›</span>
-        </button>` : '<button class="list-row add" data-act="setup">Configura il fondo emergenza</button>'}
+        </button>
+        ${(state.plans || []).map((p) => `
+          <button class="list-row" data-act="plan" data-id="${p.id}">
+            <div class="grow">
+              <div class="title">${esc(p.name)}</div>
+              <div class="sub">${fmt(p.monthly)} al mese${p.target ? ` · obiettivo ${fmt(p.target)}` : ''}${p.after ? ' · dopo il fondo' : ''}</div>
+            </div>
+            <span class="chev">›</span>
+          </button>`).join('')}
+        <button class="list-row add" data-act="new-plan">+ Nuovo piano di risparmio</button>` : '<button class="list-row add" data-act="setup">Configura il fondo emergenza</button>'}
     </div>
 
     <div class="section-title"><span>Aspetto</span></div>
@@ -802,10 +944,10 @@ function renderImpostazioni() {
     </div>
 
     <div class="alloc ${bad ? 'bad' : ''}">
-      Su una base di <b>${fmt(base)}</b>: fisse <b>${fmtPct(pctFixed)}</b> + variabili <b>${fmtPct(pctVar)}</b> = <b>${fmtPct(pctTot)}</b>.<br>
+      Su una base di <b>${fmt(base)}</b>: fisse <b>${fmtPct(pctFixed)}</b> + variabili <b>${fmtPct(pctVar)}</b>${saving ? ` + risparmio <b>${fmtPct(pctSave)}</b>` : ''} = <b>${fmtPct(pctTot)}</b>.<br>
       ${bad
-        ? `Superi il 100% di <b>${fmt(fixedTotal + varOnBase - base)}</b>: riduci qualche voce.`
-        : `Avanzo previsto: <b>${fmt(base - fixedTotal - varOnBase)}</b> (${fmtPct(100 - pctTot)}).`}
+        ? `Superi il 100% di <b>${fmt(fixedTotal + varOnBase + saving - base)}</b>: riduci qualche voce o una quota di risparmio.`
+        : `${saving ? 'Margine in più' : 'Avanzo previsto'}: <b>${fmt(base - fixedTotal - varOnBase - saving)}</b> (${fmtPct(100 - pctTot)})${saving ? ', va al fondo emergenza' : ''}.`}
     </div>
 
     <div class="section-title"><span>I tuoi dati</span></div>
@@ -1299,6 +1441,8 @@ view.addEventListener('click', (e) => {
     case 'move': move(el.dataset.kind, Number(el.dataset.i), Number(el.dataset.dir)); break;
     case 'history': historySheet(el.dataset.id); break;
     case 'goal': goalSheet(); break;
+    case 'plan': planSheet(state.plans.find((p) => p.id === id)); break;
+    case 'new-plan': planSheet(); break;
     case 'backup': saveBackup(); break;
     case 'restore': $('#restore-input').click(); break;
     case 'reset': resetAll(); break;

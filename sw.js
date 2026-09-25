@@ -1,10 +1,10 @@
 // Service worker: l'app funziona offline e si aggiorna con il tasto "Aggiorna".
 // VERSION va aumentata a ogni pubblicazione (insieme ad APP_VERSION in app.js):
 // il telefono vede il file cambiato, scarica la nuova versione e mostra l'avviso.
-const VERSION = '1.0.2';
+const VERSION = '1.1.0';
 const CACHE = `budget-${VERSION}`;
 const FILES = [
-  './', 'index.html', 'style.css', 'ios27.css', 'backend.js', 'report.js', 'app.js',
+  './', 'index.html', 'style.css', 'ios27.css', 'savings.js', 'backend.js', 'report.js', 'app.js',
   'manifest.webmanifest', 'icons/icon-32.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
