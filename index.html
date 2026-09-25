@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Budget</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Budget">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-32.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="ios27.css">
+  <script>
+    // Applica subito il tema scelto (evita il lampo di colore all'apertura)
+    try {
+      var t = localStorage.getItem('theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      document.documentElement.dataset.accent = localStorage.getItem('accent') || 'verde';
+      document.documentElement.dataset.icons = localStorage.getItem('icons') || 'on';
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="topbar" id="topbar" aria-hidden="true"></div>
+  <main id="view" aria-live="polite"></main>
+
+  <nav class="tabbar" aria-label="Sezioni">
+    <button data-tab="mese" class="active">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      <span>Mese</span>
+    </button>
+    <button data-tab="storico">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg>
+      <span>Storico</span>
+    </button>
+    <button data-tab="impostazioni">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+      <span>Impostazioni</span>
+    </button>
+  </nav>
+  <button class="fab" id="fab" aria-label="Aggiungi spesa"><svg class="ico-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+
+  <div id="sheet" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <button class="sheet-close" type="button" aria-label="Chiudi">&#x2715;</button>
+      <div class="sheet-handle" aria-hidden="true"><div class="sheet-grip"></div></div>
+      <div id="sheet-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <div id="update-banner" class="update-banner" hidden>
+    <span>Nuova versione disponibile</span>
+    <button type="button">Aggiorna</button>
+  </div>
+
+  <input type="file" id="restore-input" accept="application/json,.json" hidden>
+
+  <script src="backend.js"></script>
+  <script src="report.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
