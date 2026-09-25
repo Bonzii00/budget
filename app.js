@@ -30,7 +30,7 @@ function nextMonthLabel(id) {
 }
 
 // Versione dell'app: va aumentata a ogni pubblicazione (insieme a VERSION in sw.js)
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.2.0';
 
 // Nessun server: le "chiamate" vanno all'archivio locale del telefono (backend.js)
 function api(method, url, body) {
@@ -240,7 +240,7 @@ function iconFor(name) {
 
 // ============ ANTEPRIMA: preferenze di questo dispositivo ============
 
-const ACCENTS = [['blu', 'Blu'], ['azzurro', 'Azzurro'], ['verde', 'Verde'], ['viola', 'Viola']];
+const ACCENTS = [['blu', 'Blu'], ['azzurro', 'Azzurro'], ['verde', 'Verde'], ['viola', 'Viola'], ['rubino', 'Rubino']];
 
 function getPref(key, def) {
   try { return localStorage.getItem(key) ?? def; } catch { return def; }

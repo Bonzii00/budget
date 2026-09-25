@@ -49,6 +49,10 @@
   --p-accent: #7c4dff;  --p-w1: #e2d2ff; --p-w2: #f6d1fb; --p-w3: #d4d9ff;
   --p-accent-d: #a98bff; --p-w1-d: #3a1b70; --p-w2-d: #4d1858; --p-w3-d: #1f2468;
 }
+:root[data-accent="rubino"] {
+  --p-accent: #b3123a;  --p-w1: #ffc8d3; --p-w2: #ffd3cc; --p-w3: #f7cbe0;
+  --p-accent-d: #ff5c7f; --p-w1-d: #5c0a1f; --p-w2-d: #521012; --p-w3-d: #4a0c34;
+}
 
 /* icone nascoste da Impostazioni */
 :root[data-icons="off"] .cat-icon { display: none !important; }
@@ -197,7 +201,7 @@ main { padding-bottom: calc(var(--tabbar-h) + max(12px, calc(env(safe-area-inset
 .swatches { display: flex; justify-content: space-between; gap: 8px; }
 .swatch { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); }
 .swatch i {
-  display: block; width: 52px; height: 52px; border-radius: 50%;
+  display: block; width: 100%; max-width: 52px; height: auto; aspect-ratio: 1; border-radius: 50%;
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, .6), 0 0 0 0.5px var(--glass-edge), 0 4px 12px rgba(0, 0, 0, .15);
   transition: transform .15s;
 }
@@ -207,6 +211,7 @@ main { padding-bottom: calc(var(--tabbar-h) + max(12px, calc(env(safe-area-inset
 .sw-azzurro { background: linear-gradient(135deg, #8fe3ff, #0a8fc4); }
 .sw-verde { background: linear-gradient(135deg, #9af0b8, #178a47); }
 .sw-viola { background: linear-gradient(135deg, #d6c2ff, #6a35e8); }
+.sw-rubino { background: linear-gradient(135deg, #f0506f, #8a0724); }
 
 /* ---------- benvenuto (primo avvio) ---------- */
 
