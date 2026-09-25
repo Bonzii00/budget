@@ -280,6 +280,7 @@ main { padding-bottom: calc(var(--tabbar-h) + max(12px, calc(env(safe-area-inset
 /* ---------- liste ---------- */
 
 .list { border-radius: var(--radius); }
+.plans-list { margin-bottom: 14px; }
 .list-row { border-bottom-color: var(--line); }
 .list-row.total { background: var(--fill); }
 .alloc { border-radius: 22px; }

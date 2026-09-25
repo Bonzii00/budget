@@ -30,7 +30,7 @@ function nextMonthLabel(id) {
 }
 
 // Versione dell'app: va aumentata a ogni pubblicazione (insieme a VERSION in sw.js)
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 // Nessun server: le "chiamate" vanno all'archivio locale del telefono (backend.js)
 function api(method, url, body) {
@@ -637,7 +637,7 @@ function plansHtml() {
   if (!state.goal || plans.length === 0) return '';
   return `
     <div class="section-title"><span>Altri risparmi</span></div>
-    <div class="list">
+    <div class="list plans-list">
       ${plans.map((p) => `
         <button class="list-row" data-act="plan" data-id="${p.id}">
           <div class="grow">
