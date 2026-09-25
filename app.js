@@ -30,7 +30,7 @@ function nextMonthLabel(id) {
 }
 
 // Versione dell'app: va aumentata a ogni pubblicazione (insieme a VERSION in sw.js)
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 // Nessun server: le "chiamate" vanno all'archivio locale del telefono (backend.js)
 function api(method, url, body) {
@@ -986,7 +986,8 @@ function bindForm(root, submit) {
     try {
       const msg = await submit(new FormData(form));
       closeSheet();
-      if (msg) toast(msg);
+      if (msg?.warning) toast(msg.warning, true);
+      else if (msg) toast(msg);
       await load();
     } catch (err) {
       toast(err.message, true);
@@ -998,9 +999,10 @@ function bindForm(root, submit) {
 async function confirmAndRun(question, fn, msg) {
   if (!window.confirm(question)) return;
   try {
-    await fn();
+    const r = await fn();
     closeSheet();
-    toast(msg);
+    if (r?.warning) toast(r.warning, true);
+    else toast(msg);
     await load();
   } catch (err) { toast(err.message, true); }
 }
@@ -1263,16 +1265,17 @@ function fixedSheet(f = null, { fromCat = null } = {}) {
         return `${body.name} spostata nelle spese fisse`;
       }
       if (f) {
-        await api('PUT', `api/fixed/${f.id}`, body);
-        return 'Spesa fissa aggiornata';
+        const r = await api('PUT', `api/fixed/${f.id}`, body);
+        if (r.warning) return r;
+        return f.amount === parseEuro(body.amount) ? 'Spesa fissa aggiornata' : 'Spesa fissa aggiornata, voci variabili ricalcolate';
       }
-      await api('POST', 'api/fixed', body);
-      return 'Spesa fissa aggiunta';
+      const r = await api('POST', 'api/fixed', body);
+      return r.warning ? r : 'Spesa fissa aggiunta, voci variabili ricalcolate';
     });
     $('[data-del]', root)?.addEventListener('click', () => confirmAndRun(
       `Eliminare "${f.name}" dalle spese fisse?`,
       () => api('DELETE', `api/fixed/${f.id}`),
-      'Spesa fissa eliminata',
+      'Spesa fissa eliminata, voci variabili ricalcolate',
     ));
   });
 }

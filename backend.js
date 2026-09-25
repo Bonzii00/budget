@@ -425,6 +425,23 @@ const Backend = (() => {
     for (const c of pctCats) c.value = Math.max(0.01, Math.floor(c.value * factor * 100) / 100);
   }
 
+  // Dopo un cambio alle spese fisse: riscala le voci in percentuale come nella configurazione iniziale
+  // (tenendo conto del risparmio mensile del fondo). Se non resta spazio la spesa fissa si salva
+  // lo stesso, le voci restano com'erano e l'app lo segnala.
+  function rescaleAfterFixedChange() {
+    const s = data.settings;
+    if (!s.baseCents) return undefined;
+    const fTotal = fixedTotal();
+    const monthly = s.goalMonths ? monthlySavingFor(fTotal, s.goalInitial, s.goalMonths) : 0;
+    try {
+      scaleCategories(s.baseCents, fTotal, monthly);
+      return undefined;
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      return { warning: 'Spese fisse salvate, ma non resta abbastanza per le voci variabili: riduci qualche voce o allunga il piano del fondo' };
+    }
+  }
+
   function history() {
     return Object.entries(data.months)
       .filter(([, m]) => m.closedAt)
@@ -558,18 +575,22 @@ const Backend = (() => {
 
   on('POST', 'fixed', (b) => {
     data.fixed.push({ id: nextId(), name: parseName(b.name), amount: parseCents(b.amount), sort: nextSort(data.fixed) });
+    return rescaleAfterFixedChange();
   });
 
   on('PUT', 'fixed/(\\d+)', (b, [id]) => {
     const f = findFixed(parseId(id));
     const name = parseName(b.name);
     const amount = parseCents(b.amount);
+    const changed = amount !== f.amount;
     Object.assign(f, { name, amount });
+    return changed ? rescaleAfterFixedChange() : undefined;
   });
 
   on('DELETE', 'fixed/(\\d+)', (b, [id]) => {
     const f = findFixed(parseId(id));
     data.fixed = data.fixed.filter((x) => x !== f);
+    return rescaleAfterFixedChange();
   });
 
   on('POST', 'fixed/(\\d+)/to-variable', (b, [id]) => {
